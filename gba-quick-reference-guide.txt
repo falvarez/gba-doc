@@ -1,0 +1,369 @@
+GameBoyAdvance Quick Reference Guide - Revision 4
+----------------------------------------------------------------------------------------------------------------
+                                                                          21-jan-2002   djinn/wd (djinn@o12.org)
+
+This was never intended to be a FULL, detailed documentation over the GBA, but merely, as the guide's name
+claims, a quick reference guide. I've taken the liberty of leaving out certain information; registers/bits etc.,
+making this text even more of a quick reference targeted at the most used registers and functions of the GBA.
+In short, I have refined and retyped explanations for each register, leaving only the vital straight facts.
+I strongly recommend people wanting to learn EVERY ASPECT of the GBA to find more elaborate documentation.
+Same goes for all you who are new to the GBA - this reference guide targets the already acquainted programmer.
+
+----------------------------------------------------------------------------------------------------------------
+
+System ROM      $0000000-$0003fff (16kb) The GBA's BIOS (includes 2kb for GBC compatibility)
+
+EXRAM           $2000000-$203ffff (256kb) External RAM (slower read/write access than IWRAM)
+IWRAM           $3000000-$3007fff (32kb) Internal RAM
+
+Custom I/O      $4000000          Custom I/O registers start
+
+Palette         $5000000-$50003ff (1kb) 2 x 256 colors. First 256 for BG's, last 256 for OBJ's
+
+VRAM            $6000000-$6017fff (96kb) as follows:
+                $6000000-$600ffff Tile data, character screen maps, and bitmapped screens
+                $6010000-$6017fff OBJ tile data and bitmapped screens
+
+OAM             $7000000-$70003ff (1kb) Object Attribute Memory - OBJ-structures (128 sprites, 8 bytes each)
+
+GAME ROM        $8000000-$9ffffff (32mb) This is where your ROM image is located upon startup
+SRAM            $e000000-$e00ffff (up to 64kb per bank)
+
+
+The LCD display is 240x160 pixels (30x20 characters, also called tiles, 8x8 pixels in size)
+The CPU (ARM7TDMI) runs in 16.78 MHz
+
+
+
+Palette structure.
+------------------
+2 bytes per color:
+
+Bit 15          unused         ( x....... ........
+Bit 14-10       Blue, 0-31       .BBBBB.. ........
+Bit 9-5         Green, 0-31      ......GG GGG.....
+Bit 4-0         Red, 0-31        ........ ...RRRRR )
+
+
+
+BG Modes 0-2 utilize character BG's. BG modes 3-5 utilize only BG2, as a bitmapped Rot/Scale BG.
+------------------------------------------------------------------------------------------------
+Mode 0          All 4 BG's are in character mode
+Mode 1          BG0 and BG1 are in character mode, BG2 is in Rot/Scale mode, BG3 is not used
+Mode 2          BG2 and BG3 are in Rot/Scale mode, BG0 and BG1 are not used
+Mode 3          Only BG2 is used, in 240x160 pixels size, using 1 framebuffer in 15bit truecolor
+Mode 4          Only BG2 is used, in 240x160 pixels size, using 2 framebuffers in 8bit indexed color
+Mode 5          Only BG2 is used, in 160x128 pixels size, using 2 framebuffers in 15bit truecolor
+
+
+
+Screen map structure for character BG's (modes 0-2).
+----------------------------------------------------
+2 bytes per tile in a screen map:
+
+Bit 15-12       Selects palette 0-15. Ignore if you use 256-col mode
+Bit 11          Vertical flip (1 = flip)
+Bit 10          Horizontal flip (1 = flip)
+Bit 9-0         Character number 0-1023 (tiles are sequentially addressed in VRAM left to right, top
+                                         bottom, with 32 rows of 32 tiles each, 1024 tiles in total)
+
+Tiles in a screen map are ordered left to right, top to bottom. See BG(0-3)CNT for screen map memory locations
+
+
+
+Tile data structures for character BG's. All tiles are 8x8 pixels in size. Color 0 is transparent.
+--------------------------------------------------------------------------------------------------
+1) 16 colors, 16 palettes: 2 pixels per byte. Bits 0-3 set color 0-15 for left pixel, bits 4-7 for right pixel
+   32 bytes per tile, $4000 bytes (16kb) for a full set of 1024 tiles
+                                                                         byte 0     byte 1     byte 2
+                                                                         ---------  ---------  ---------
+                                                                    bit  7654 3210  7654 3210  7654 3210  ...
+                                                                         ---- ----  ---- ----  ---- ----
+                                                                  pixel  1    0     3    2     5    4
+
+2) 256 colors, 1 palette: 1 pixel per byte, corresponding to a color from the palette
+   64 bytes per tile, $8000 bytes (32kb) for a full set of 1024 tiles
+
+In both 16 and 256 color mode, pixels for a tile are ordered left to right, top to bottom:  00. . . . . . 07
+                                                                                            08. . . . . . 15
+See BG(0-3)CNT for tile data memory locations                                               . . . . . . . .
+                                                                                            . . . . . . . .
+                                                                                            . . . . . . . .
+                                                                                            . . . . . . . .
+                                                                                            . . . . . . . .
+                                                                                            56. . . . . . 63
+
+
+
+Bitmap structures for bitmapped BG's (modes 3-5).
+-------------------------------------------------
+Mode 3) 16 bits per pixel (15bit truecolor), same structure as the palette. Screen size is 240x160 pixels
+        Framebuffer 0 = $6000000-$6012bff
+
+Mode 4) 8 bits per pixel, corresponding to one of 256 colors from the palette. Screen size is 240x160 pixels
+        Framebuffer 0 = $6000000-$60095ff, Framebuffer 1 = $600a000-$60135ff
+
+Mode 5) 16 bits per pixel (15bit truecolor), same structure as the palette. Screen size is 160x128 pixels
+        Framebuffer 0 = $6000000-$6009fff, framebuffer 1 = $600a000-$6013fff
+
+Pixels in bitmapped BG's are ordered left to right, top to bottom. See DISPCNT for framebuffer toggling
+
+
+
+OAM - OBJ-structure. 128 objects. 8 bytes per object, divided into four 16 bit attributes numbered 0-3.
+-------------------------------------------------------------------------------------------------------
+Attribute 0     Bit 15-14      OBJ Size ID1 (see below)
+                Bit 13         1=256 colors / 1 palette. 0=16 colors / 16 palettes
+                Bit 12         1=OBJ mosaic enabled (see MOSAIC)
+                Bit 11-10      00=Normal, 01=Semi transparent, 10=OBJ window, 11=Prohibited
+                Bit 9          Rot/Scale double-size flag, 1=Single-fold, 0=Double angle
+                Bit 8          Rot/Scale flag, 1=Enabled
+                Bit 7-0        Y coordinate
+
+Attribute 1     Bit 15-14      OBJ Size ID2 (see below)
+              ( Bit 13-09      Rot/Scale parameter selection if Rot/Scale flag is enabled, otherwise unused )
+                Bit 13         Vertical flip
+                Bit 12         Horizontal flip
+                Bit 8-0        X coordinate
+
+Attribute 2     Bit 15-12      Select palette 0-15, ignore if OBJ is in 256-col mode
+                               (Note that OBJ's use a different palette than characters, beginning at $5000200)
+                Bit 11-10      Priority 0-3: 00=first, 11=last (OBJ's always have rendering-priority over
+                                                                a BG with an identical priority setting)
+                Bit 9-0        Tile start number 0-1023 (in 2-dimensional OBJ mapping mode (see DISPCNT), only
+                                                         even numbered tiles can be addressed (bit 0 disabled).
+                                                         When using BG modes 3-5, the OBJ tile data memory is
+                                                         halved, and only the 512 upper tiles can be addressed
+                                                         as only $6014000-$6017fff of the VRAM is available
+                                                         for OBJ tile data)
+
+Attribute 3     Used only for Rot/Scale OBJ's
+
+                OBJ size is decided from bitpairs ID1+ID2: 00 00 = 8x8      01 00 = 16x8     10 00 = 8x16
+                                                           00 01 = 16x16    01 01 = 32x8     10 01 = 8x32
+                                                           00 10 = 32x32    01 10 = 32x16    10 10 = 16x32
+                                                           00 11 = 64x64    01 11 = 64x32    10 11 = 32x64
+
+                                                           Sizes shown indicate pixels, meaning that an 8x8 OBJ
+                                                           is made of 1x1 tiles, 16x16 is made of 2x2 tiles etc.
+
+
+
+Custom I/O registers ($4000xxx).
+--------------------------------
+
+All registers are words (16 bits, by ARM stupidly referred to as half-words) unless otherwise stated.
+Registers marked with 'L' are longwords (32 bits, by ARM stupidly referred to as words).
+All bits are both read AND write, unless marked with 'r' or 'w', meaning (r)ead or (w)rite only.
+
+
+DISPCNT         $000            Display control
+
+                                15      OBJ-window, 1=display
+                                14      Window 1, 1=display
+                                13      Window 0, 1=display
+                                12-08   Display individual windows, ordered OBJ BG3 BG2 BG1 BG0, 1=display
+                                07      Forced blank, 1=enable (causes LCD to go blank - "white")
+                                06      OBJ tile mapping format: 1=1-dimensional, 0=2-dimensional
+                                05      Process OBJ's in H-blank: 0=enable, 1=disable
+                                04      Mode 3-5 buffer display: 0=show framebuffer 0, 1=show framebuffer 1
+                                02-00   BG Mode 0-5     Mode 0-2 = Tile- and Rot/Scale BG
+                                                        Mode 3-5 = Bitmap BG
+                                                        (When in Mode 3-5 (bitmap mode), only BG2 is used)
+
+DISPSTAT        $004            General LCD Status
+
+                                15-08   VCount Setting, can be used to set the value used for
+                                        VCount evaluation and VCount match interrupts, range 0-227
+
+                                5       VCount match interrupt enable: 1=enable, 0=disable
+                                4       H-blank interrupt enable: 1=enable, 0=disable
+                                3       V-blank interrupt enable: 1=enable, 0=disable
+                                2 r     VCount evaluation: 1=match, 0=non-match
+                                1 r     H-blank status: 1=H-blank occuring, 0=outside H-blank
+                                0 r     V-blank status: 1=V-blank occuring, 0=outside V-blank
+
+
+VCOUNT          $006            7-0 r   Vertical Count (0-227) where 0-159 is display, and 160-227 is V-blank
+
+BG(0,1)CNT      $008,$00a       Character BG control for BG0 and BG1
+
+                                15-14   Screen map size  00=256x256 (32x32)     10=256x512 (32x64)
+                                                         01=512x256 (64x32)     11=512x512 (64x64)
+
+                                12-08   Screen map base address, 0-31 (blocksize is 2kb ($800))
+                                07      Color mode: 0=16 cols/16 palettes, 1=256 cols/1 palette
+                                06      Mosaic: 1=enable, 0=disable (see MOSAIC)
+                                05-04   Always set to 0
+                                03-02   Tile set base address, 0-3 (blocksize is 16kb ($4000))
+                                01-00   Rendering priority 0-3: 00=first, 11=last
+                                        (when the same priority level is specified for two or more BG's,
+                                         priority is decided from the BG number: 0 is first, 3 is last)
+
+BG(2,3)CNT      $00c,$00e       Character- and Rot/Scale BG control for BG2 and BG3. Same as BG(0,1)CNT except:
+
+                                15-14   Screen map size  00=256x256 (Char BG)    00=128x128 (Rot/Scale BG)
+                                                         01=512x256              01=256x256
+                                                         10=256x512              10=512x512
+                                                         11=512x512              11=1024x1024
+
+                                13      Rot/Scale Area Overflow Process: 1=wrap display, 0=transparent
+
+                                If a BG is in Character or Rot/Scale mode is determined by the
+                                BG MODE setting in DISPCNT.   ( Mode 0: BG0-3 = Char BG
+                                                                Mode 1: BG0-1 = Char BG, BG2=Rot/Scale BG
+                                                                Mode 2: BG2-3 = Rot/Scale BG )
+
+                                When in Mode 3-5 (bitmap mode), only BG2 is used, with only bits 6 and 1-0.
+
+BG0HOFS         $010            08-00 w Horizontal offset for BG0
+BG0VOFS         $012            08-00 w Vertical offset for BG0
+BG1HOFS         $014            08-00 w Horizontal offset for BG1
+BG1VOFS         $016            08-00 w Vertical offset for BG1
+BG2HOFS         $018            08-00 w Horizontal offset for BG2
+BG2VOFS         $01a            08-00 w Vertical offset for BG2
+BG3HOFS         $01c            08-00 w Horizontal offset for BG3
+BG3VOFS         $01e            08-00 w Vertical offset for BG3
+
+WIN0H           $040            Window 0H left upper and right lower X coordinates
+
+                                15-08 w Left upper X
+                                07-00 w Right lower X
+
+WIN1H           $042            Window 1H, same as WIN0H
+
+WIN0V           $044            Window 0V left upper and right lower Y coordinates
+
+                                15-08 w Left upper Y
+                                07-00 w Right lower Y
+
+WIN1V           $046            Window 1V, same as WIN0V
+
+WININ           $048            Display control INSIDE windows
+
+                                13      1=enable color special effects for win1
+                                12-08   1=display win1 entities, ordered OBJ BG3 BG2 BG1 BG0
+                                05      1=enable color special effects for win0
+                                04-00   1=display win0 entities, ordered OBJ BG3 BG2 BG1 BG0
+
+WINOUT          $04a            Display control OUTSIDE windows and INSIDE OBJ-window
+
+                                13      1=enable color special effects for OBJ-window
+                                12-08   1=display OBJ-win entities, ordered OBJ BG3 BG2 BG1 BG0
+                                05      1=enable color special effects for win0,1
+                                04-00   1=display win0,1 entities, ordered OBJ BG3 BG2 BG1 BG0
+
+MOSAIC          $04c            Mosaic size for OBJ's and BG's
+
+                                15-12 w VSize for OBJ-mosaic (all sizes range from 0-15)
+                                11-08 w HSize for OBJ-mosaic
+                                07-04 w VSize for BG-mosaic
+                                03-00 w HSize for BG-mosaic
+
+BLDCNT          $050            Color special effects / Color blending control
+
+                                13-08   2nd pixel target, ordered BD OBJ BG3 BG2 BG1 BG0
+
+                                07-06   Color special effect setting     00=no special effect
+                                                                         01=Alpha blending
+                                                                         10=Brightness increase
+                                                                         11=Brightness decrease
+
+                                05-00   1st pixel target, ordered BD OBJ BG3 BG2 BG1 BG0
+
+BLDALPHA        $052            12-08 w Special effects coefficient EVB (EVB/EVA controls Alpha blending)
+                                04-00 w Special effects coefficient EVA
+
+BLDY            $054            04-00 w Special effects coefficient EVY (EVY controls brightness changes)
+
+                                Color special effects processes are as follows:
+
+                                Alpha blending:      Result color = (1st pixel x EVA) + (2nd pixel x EVB)
+
+                                Brightness increase: R result color = 1st pixel R + (31 - 1st pixel R) x EVY
+                                                     G result color = 1st pixel G + (63 - 1st pixel G) x EVY
+                                                     B result color = 1st pixel B + (31 - 1st pixel B) x EVY
+
+                                Brightness decrease: Result color = 1st pixel - 1st pixel x EVY
+
+DMA0SAD         $0b0 L          DMA 0 source address (27 bits wide)
+DMA0DAD         $0b4 L          DMA 0 destination address (27 bits wide)
+DMA0CNT_L       $0b8            DMA 0 word count (14 bits wide)
+DMA0CNT_H       $0ba            DMA 0 control
+
+                                15      1=enable DMA
+                                14      1=generate interrupt request when DMA is finished
+
+                                13-12   DMA start timing        00=start immediately
+                                                                01=start in V-blank
+                                                                10=start in H-blank
+                                                                11=prohibited (for DMA 1 and 2, this
+                                                                               setting activates the
+                                                                               Direct FIFO mode when
+                                                                               combined with bit 9 set)
+
+                                10      DMA word size           1=32bit, 0=16bit
+                                09      DMA repeat              1=repeat DMA when transfer is done
+
+                                08-07   source control          00=increase src address
+                                                                01=decrease src address
+                                                                10=fixed src address
+                                                                11=prohibited
+
+                                06-05   destination control     00=increase dst address
+                                                                01=decrease dst address
+                                                                10=fixed dst address
+                                                                11=increase dst address, and restore
+                                                                   dst address when DMA is finished
+
+DMA1SAD         $0bc L          DMA 1 source address (28 bits wide)
+DMA1DAD         $0c0 L          DMA 1 destination address (27 bits wide)
+DMA1CNT_L       $0c4            DMA 1 word count (14 bits wide. Disabled when direct FIFO mode is enabled)
+DMA1CNT_H       $0c6            DMA 1 control (same as DMA0CNT)
+
+DMA2SAD         $0c8 L          DMA 2 source address (28 bits wide)
+DMA2DAD         $0cc L          DMA 2 destination address (27 bits wide)
+DMA2CNT_L       $0d0            DMA 2 word count (14 bits wide. Disabled when direct FIFO mode is enabled)
+DMA2CNT_H       $0d2            DMA 2 control (same as DMA0CNT)
+
+DMA3SAD         $0d4 L          DMA 3 source address (28 bits wide)
+DMA3DAD         $0d8 L          DMA 3 destination address (28 bits wide)
+DMA3CNT_L       $0dc            DMA 3 word count (16 bits wide)
+DMA3CNT_H       $0de            DMA 3 control (same as DMA0CNT, except bit 11 = GamePak data request flag)
+
+KEYINPUT        $130            Key input (0=key pressed)
+
+                                09      L
+                                08      R
+                                07      Down
+                                06      Up
+                                05      Left
+                                04      Right
+                                03      Start
+                                02      Select
+                                01      B
+                                00      A
+
+IE              $200            Interrupt Enable Register. Setting a bit enables the corresponding interrupt:
+
+                                13      Game Pak (DREQ/IREQ)
+                                12      Key
+                                11-08   DMA 3-0
+                                07      Serial com/General purpose com/JOY bus com/UART com
+                                06-03   Timer 3-0
+                                02      V Counter Match (see DISPSTAT)
+                                01-00   H-blank and V-blank
+
+IF              $202            Interrupt Request Register: same bits as IE $200, but all bits are READ only.
+                                                            However, if a bit in this register is set, the
+                                                            corresponding interrupt request flag will be reset
+
+IME             $208            Interrupt Master Enable Register
+
+                                00       1=Enable Master Interrupt (enables IE $200)
+
+                                When an interrupt occurs, the CPU will jump to the address stored at $3007ffc.
+                                Note that this vector should point to ARM-code ONLY. The return address to
+                                where the processor was interrupted is stored in the LR register (e.g. "BX LR")
+
+
